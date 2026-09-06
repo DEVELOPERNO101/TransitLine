@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transitline — Live Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --void:#080A12;
+    --void-raised:#0F1320;
+    --void-panel:#12172A;
+    --grid-line: rgba(122,166,214,0.07);
+    --hair: rgba(154,175,222,0.12);
+    --text-bright:#E9ECF6;
+    --text-dim:#7C86A8;
+    --amber:#F5A93C;
+    --amber-glow: rgba(245,169,60,0.55);
+    --route:#3E6690;
+    --route-dim: rgba(62,102,144,0.4);
+    --green:#4ADE9C;
+    --green-glow: rgba(74,222,156,0.5);
+    --red:#FF5F56;
+    --red-glow: rgba(255,95,86,0.5);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--void);color:var(--text-bright);
+    font-family:'IBM Plex Sans',sans-serif;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size:38px 38px;
+    min-height:100vh;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  h1,h2,h3{font-family:'Archivo',sans-serif;letter-spacing:-0.01em;margin:0;}
+
+  .shell{max-width:1400px;margin:0 auto;padding:20px 26px 40px;}
+
+  /* TOP BAR */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--hair);
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{
+    width:30px;height:30px;border:1.5px solid var(--amber);border-radius:6px;
+    display:flex;align-items:center;justify-content:center;position:relative;
+  }
+  .brand-mark:after{
+    content:"";width:8px;height:8px;background:var(--amber);border-radius:2px;
+    box-shadow:0 0 10px var(--amber-glow);
+  }
+  .brand-text{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;}
+  .brand-sub{font-size:11.5px;color:var(--text-dim);margin-top:1px;}
+  .topbar-right{display:flex;align-items:center;gap:26px;}
+  .clock{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--text-dim);}
+  .live-pill{
+    display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:20px;
+    border:1px solid rgba(74,222,156,0.35);background:rgba(74,222,156,0.08);
+    font-size:12px;font-weight:600;color:var(--green);
+  }
+  .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green-glow);animation:blink 1.8s infinite;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+  /* GRID */
+  .main-grid{display:grid;grid-template-columns:1.65fr 1fr;gap:20px;}
+  .panel{
+    background:var(--void-panel);border:1px solid var(--hair);border-radius:10px;
+    padding:20px 22px;
+  }
+  .panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .panel-title{font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);}
+  .panel-meta{font-size:11.5px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;}
+
+  /* MAP */
+  .map-panel{padding:20px 20px 12px;position:relative;overflow:hidden;}
+  .add-bus-bar{
+    display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;
+  }
+  .mini-input{
+    background:var(--void-raised);border:1px solid var(--hair);color:var(--text-bright);
+    padding:8px 12px;border-radius:6px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;
+    width:170px;
+  }
+  .mini-input::placeholder{color:var(--text-dim);}
+  .mini-btn{
+    background:var(--amber);color:var(--void);border:none;padding:8px 14px;border-radius:6px;
+    font-size:12.5px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;
+    white-space:nowrap;
+  }
+  .mini-btn.armed{background:var(--void-raised);color:var(--amber);border:1px solid var(--amber);animation:blink 1s infinite;}
+  .mini-btn.ghost{background:transparent;color:var(--text-bright);border:1px solid var(--hair);}
+  .mini-hint{font-size:11.5px;color:var(--text-dim);}
+  #mapCanvas{width:100%;height:460px;border-radius:8px;overflow:hidden;background:#0d1017;}
+  #mapCanvas .leaflet-tile-pane{
+    filter: invert(90%) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.85);
+  }
+  #mapCanvas .leaflet-control-zoom a{
+    background:var(--void-panel);color:var(--text-bright);border-color:var(--hair);
+  }
+  #mapCanvas .leaflet-control-zoom a:hover{background:var(--void-raised);}
+  .leaflet-control-attribution{
+    background:rgba(8,10,18,0.75) !important;color:var(--text-dim) !important;font-size:9.5px !important;
+  }
+  .leaflet-control-attribution a{color:var(--text-dim) !important;}
+  .bus-divicon{
+    width:16px;height:16px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 10px 3px var(--amber-glow);border:2px solid rgba(8,10,18,0.6);
+  }
+  .school-divicon{
+    width:20px;height:20px;border-radius:6px;background:var(--void-raised);
+    border:2px solid var(--amber);display:flex;align-items:center;justify-content:center;
+  }
+  .stop-divicon{width:7px;height:7px;border-radius:50%;background:var(--route);opacity:.9;}
+  .map-legend{display:flex;gap:22px;padding:12px 4px 2px;flex-wrap:wrap;}
+  .legend-item{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-dim);}
+  .legend-swatch{width:10px;height:10px;border-radius:3px;}
+
+  /* SIDE PANELS */
+  .side-col{display:flex;flex-direction:column;gap:20px;}
+
+  .fleet-list{display:flex;flex-direction:column;}
+  .fleet-row{
+    display:grid;grid-template-columns:20px 1fr auto;gap:12px;align-items:center;
+    padding:11px 0;border-bottom:1px solid var(--hair);font-size:13px;
+  }
+  .fleet-row:last-child{border-bottom:none;}
+  .fleet-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green-glow);}
+  .fleet-dot.delay{background:var(--red);box-shadow:0 0 6px var(--red-glow);}
+  .fleet-name{font-weight:600;}
+  .fleet-sub{font-size:11.5px;color:var(--text-dim);margin-top:1px;}
+  .fleet-riders{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-dim);text-align:right;}
+  .fleet-row.flash-update{animation:flashUpdate 0.9s ease;}
+  @keyframes flashUpdate{0%{background:rgba(245,169,60,0.18);}100%{background:transparent;}}
+
+  /* GAUGE */
+  .gauge-wrap{display:flex;align-items:center;gap:22px;}
+  .gauge-num{font-family:'Archivo',sans-serif;font-size:38px;font-weight:700;color:var(--green);}
+  .gauge-sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+  .gauge-breakdown{margin-top:16px;display:flex;flex-direction:column;gap:9px;}
+  .gb-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);}
+  .gb-row b{color:var(--text-bright);font-weight:500;font-family:'IBM Plex Mono',monospace;}
+
+  /* ALERTS FEED */
+  .alert-row{
+    display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--hair);
+    opacity:0;animation:fadein .5s forwards;
+  }
+  @keyframes fadein{to{opacity:1;}}
+  .alert-row:last-child{border-bottom:none;}
+  .alert-tag{
+    flex:none;width:6px;border-radius:3px;background:var(--amber);margin-top:2px;
+  }
+  .alert-tag.crit{background:var(--red);}
+  .alert-tag.info{background:var(--route);}
+  .alert-body b{font-size:13px;display:block;}
+  .alert-body span{font-size:11.5px;color:var(--text-dim);}
+
+  /* TICKER */
+  .ticker{
+    margin-top:20px;border:1px solid var(--hair);border-radius:8px;
+    background:var(--void-panel);overflow:hidden;white-space:nowrap;position:relative;
+  }
+  .ticker-inner{
+    display:inline-block;padding:12px 0;
+    animation:scroll 32s linear infinite;
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-dim);
+  }
+  .ticker-inner span{margin:0 28px;}
+  .ticker-inner span b{color:var(--amber);font-weight:600;}
+  @keyframes scroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  @media(max-width:960px){
+    .main-grid{grid-template-columns:1fr;}
+    .gauge-wrap{flex-direction:column;align-items:flex-start;}
+  }
+
+  /* LOGIN GATE */
+  #loginGate{
+    position:fixed;inset:0;background:var(--void);z-index:1000;
+    display:flex;align-items:center;justify-content:center;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size:38px 38px;
+  }
+  .login-card{
+    width:340px;background:var(--void-panel);border:1px solid var(--hair);
+    border-radius:12px;padding:32px 30px;
+  }
+  .login-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .login-title{font-size:14px;color:var(--text-dim);margin-bottom:26px;}
+  .login-field{margin-bottom:14px;}
+  .login-field label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;}
+  .login-field input{
+    width:100%;background:var(--void-raised);border:1px solid var(--hair);color:var(--text-bright);
+    padding:11px 13px;border-radius:6px;font-size:14px;font-family:'IBM Plex Sans',sans-serif;
+  }
+  .login-btn{
+    width:100%;padding:12px;border-radius:6px;background:var(--amber);color:var(--void);
+    border:none;font-weight:700;font-size:14px;cursor:pointer;margin-top:6px;
+  }
+  .login-error{color:var(--red);font-size:12.5px;margin-top:10px;min-height:16px;}
+  .login-demo{
+    margin-top:18px;padding-top:14px;border-top:1px solid var(--hair);
+    font-size:11.5px;color:var(--text-dim);line-height:1.6;
+  }
+  .login-tabs{display:flex;gap:4px;background:var(--void-raised);padding:3px;border-radius:7px;margin-bottom:24px;}
+  .login-tab{
+    flex:1;text-align:center;padding:8px 0;font-size:12.5px;font-weight:600;color:var(--text-dim);
+    border-radius:5px;cursor:pointer;border:none;background:none;font-family:'IBM Plex Sans',sans-serif;
+  }
+  .login-tab.active{background:var(--ink,var(--void));color:var(--text-bright);background:#1b2138;}
+  .login-field select{
+    width:100%;background:var(--void-raised);border:1px solid var(--hair);color:var(--text-bright);
+    padding:11px 13px;border-radius:6px;font-size:14px;font-family:'IBM Plex Sans',sans-serif;
+  }
+  #signupForm{display:none;}
+  .search-result-item{
+    padding:9px 10px;font-size:12.5px;color:var(--text-bright);cursor:pointer;
+    border-radius:5px;border:1px solid transparent;
+  }
+  .search-result-item:hover{background:var(--void-raised);border-color:var(--hair);}
+  #schoolSearchResults{margin-top:6px;max-height:150px;overflow-y:auto;}
+  #schoolSearchResults .mini-hint{padding:6px 2px;display:block;}
+  .login-demo b{color:var(--text-bright);font-family:'IBM Plex Mono',monospace;font-weight:500;}
+  .user-pill{
+    display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-dim);
+  }
+  .user-pill b{color:var(--text-bright);font-weight:600;}
+  .logout-link{color:var(--text-dim);font-size:12px;text-decoration:underline;cursor:pointer;background:none;border:none;font-family:inherit;}
+</style>
+</head>
+<body>
+
+<div id="loginGate">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">Transitline</div>
+    </div>
+    <div class="login-title">District ops console</div>
+
+    <div class="login-tabs">
+      <button type="button" class="login-tab active" id="tabSignin">Sign in</button>
+      <button type="button" class="login-tab" id="tabSignup">Create account</button>
+    </div>
+
+    <form id="loginForm">
+      <div class="login-field">
+        <label>Staff ID</label>
+        <input type="text" id="loginUser" autocomplete="username" placeholder="Staff ID you signed up with">
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="loginPass" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button type="submit" class="login-btn">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+
+    <form id="signupForm">
+      <div class="login-field">
+        <label>Your name</label>
+        <input type="text" id="signupName" placeholder="e.g. J. Mwangi">
+      </div>
+      <div class="login-field">
+        <label>Choose a Staff ID</label>
+        <input type="text" id="signupUser" autocomplete="username" placeholder="e.g. jmwangi">
+      </div>
+      <div class="login-field">
+        <label>Choose a password</label>
+        <input type="password" id="signupPass" autocomplete="new-password" placeholder="••••••••">
+      </div>
+      <div class="login-field">
+        <label>Role</label>
+        <select id="signupRole">
+          <option value="admin">District Admin</option>
+          <option value="driver">Bus driver</option>
+        </select>
+      </div>
+      <div class="login-field" id="signupRouteField" style="display:none;">
+        <label>Route</label>
+        <input type="text" id="signupRoute" placeholder="e.g. Bus 4 — Karen route">
+      </div>
+      <div class="login-field" id="signupSchoolFields">
+        <label>School name</label>
+        <input type="text" id="signupSchoolName" placeholder="e.g. Ridgeview Academy">
+      </div>
+      <div class="login-field" id="signupSchoolSearchField">
+        <label>Search for school location</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="schoolSearchInput" style="flex:1;" placeholder="e.g. Ridgeview Academy, Nairobi">
+          <button type="button" id="schoolSearchBtn" class="mini-btn" style="padding:0 14px;">Search</button>
+        </div>
+        <div id="schoolSearchResults"></div>
+      </div>
+      <div class="login-field" id="signupSchoolLocFields" style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <label>School latitude</label>
+          <input type="text" id="signupSchoolLat" placeholder="-1.2833">
+        </div>
+        <div style="flex:1;">
+          <label>School longitude</label>
+          <input type="text" id="signupSchoolLng" placeholder="36.7833">
+        </div>
+      </div>
+      <button type="submit" class="login-btn">Create account &amp; sign in</button>
+      <div class="login-error" id="signupError"></div>
+    </form>
+
+    <div class="login-demo" id="noAccountsHint">
+      No accounts exist yet on this session — use "Create account" above to add the first one.
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-text">Transitline — Live Ops</div>
+        <div class="brand-sub">Ridgeview Academy — Nairobi, Kenya</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="user-pill" id="userPill"></div>
+      <div class="clock mono" id="sessionCountdown" style="display:none;"></div>
+      <div class="clock mono" id="clock">--:--:--</div>
+      <div class="live-pill"><span class="live-dot"></span>LIVE</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- LEFT: MAP -->
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <div class="panel-title">District fleet — live position</div>
+        <div class="panel-meta" id="mapUpdated">updated just now</div>
+      </div>
+      <div class="add-bus-bar">
+        <select id="busSelect" class="mini-input" style="width:150px;">
+          <option value="__new__">+ New bus</option>
+        </select>
+        <input type="text" id="newBusName" class="mini-input" style="width:130px;" placeholder="Name (new bus only)">
+        <input type="text" id="gpsLat" class="mini-input" style="width:100px;" placeholder="Latitude">
+        <input type="text" id="gpsLng" class="mini-input" style="width:100px;" placeholder="Longitude">
+        <button type="button" id="pickOnMapBtn" class="mini-btn ghost">📍 Pick on map</button>
+        <button type="button" id="setLocationBtn" class="mini-btn">Set GPS location</button>
+        <span class="mini-hint" id="placeHint"></span>
+      </div>
+      <div id="mapCanvas"></div>
+      <div class="map-legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--amber);"></span>Active bus</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--route);"></span>Route line</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--void-raised);border:1.5px solid var(--amber);"></span>Campus</div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="side-col">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Fleet status</div>
+          <div class="panel-meta" id="fleetCount">4 routes</div>
+        </div>
+        <div class="fleet-list" id="fleetList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">District attendance</div>
+          <div class="panel-meta">today</div>
+        </div>
+        <div class="gauge-wrap">
+          <svg width="96" height="96" viewBox="0 0 96 96">
+            <circle cx="48" cy="48" r="40" fill="none" stroke="var(--hair)" stroke-width="8"/>
+            <circle id="gaugeArc" cx="48" cy="48" r="40" fill="none" stroke="var(--green)" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2"
+              transform="rotate(-90 48 48)" style="filter:drop-shadow(0 0 5px var(--green-glow));"/>
+          </svg>
+          <div>
+            <div class="gauge-num" id="gaugeNum">0%</div>
+            <div class="gauge-sub">1,842 of 1,915 enrolled present</div>
+          </div>
+        </div>
+        <div class="gauge-breakdown">
+          <div class="gb-row"><span>On bus, in transit</span><b>154</b></div>
+          <div class="gb-row"><span>Checked into class</span><b>1,688</b></div>
+          <div class="gb-row"><span>Flagged absent</span><b>73</b></div>
+        </div>
+      </div>
+
+      <div class="panel" id="addDriverPanel" style="display:none;">
+        <div class="panel-head">
+          <div class="panel-title">Team — add a driver</div>
+          <div class="panel-meta" id="driverCount">0 added</div>
+        </div>
+        <div class="login-field"><input type="text" id="drvName" class="mini-input" style="width:100%;" placeholder="Driver name"></div>
+        <div class="login-field"><input type="text" id="drvUser" class="mini-input" style="width:100%;" placeholder="Staff ID"></div>
+        <div class="login-field"><input type="password" id="drvPass" class="mini-input" style="width:100%;" placeholder="Temporary password"></div>
+        <div class="login-field"><input type="text" id="drvRoute" class="mini-input" style="width:100%;" placeholder="Route, e.g. Bus 4 — Karen route"></div>
+        <button type="button" id="addDriverBtn" class="mini-btn" style="width:100%;">+ Add driver</button>
+        <div class="login-error" id="drvError"></div>
+        <div id="driverList" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel" id="deviceGpsPanel" style="display:none;">
+        <div class="panel-head">
+          <div class="panel-title">Device GPS</div>
+          <div class="panel-meta" id="deviceGpsRouteLabel">—</div>
+        </div>
+        <div class="login-demo" style="margin-top:0;padding-top:0;border-top:none;">
+          Turn this on while you're on the bus and this device's own location becomes its live GPS on the map.
+        </div>
+        <button type="button" id="deviceGpsBtn" class="mini-btn" style="width:100%;margin-top:10px;">Enable this device as live GPS</button>
+        <div class="login-error" id="deviceGpsStatus" style="color:var(--text-dim);"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Alerts</div>
+          <div class="panel-meta">live</div>
+        </div>
+        <div id="alertFeed">
+          <div class="login-demo" id="noAlertsHint">No alerts yet — adding a bus or updating a GPS location will show up here.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="ticker-inner" id="tickerInner"></div>
+  </div>
+
+</div>
+
+<script>
+  // ===== LOGIN GATE (custom, no Google/third-party auth) =====
+  // Demo only: accounts live in memory for this session. A real deployment needs a
+  // real backend — hashed passwords, server-side sessions, per-user audit logging.
+  const ACCOUNTS = {};
+  let currentUser = null;
+  let geoWatchId = null;
+  const DEFAULT_CAMPUS = [-1.2833, 36.7833];
+  const DEFAULT_SCHOOL_NAME = 'Ridgeview Academy';
+
+  const ALERTS = {}; // userId -> that person's own alert history, never shared with anyone else
+
+  function renderAlertsFor(userId){
+    const feed = document.getElementById('alertFeed');
+    const list = ALERTS[userId] || [];
+    if(!list.length){
+      feed.innerHTML = '<div class="login-demo" id="noAlertsHint">No alerts yet — actions you take will show up here.</div>';
+      return;
+    }
+    feed.innerHTML = list.map(a =>
+      `<div class="alert-row"><span class="alert-tag ${a.tag}"></span><div class="alert-body"><b>${a.title}</b><span>${a.sub}</span></div></div>`
+    ).join('');
+  }
+
+  function addAlert(tag, title, sub, forUser){
+    const owner = forUser || currentUser;
+    if(!owner) return; // no one signed in to attribute this to
+    if(!ALERTS[owner]) ALERTS[owner] = [];
+    ALERTS[owner].unshift({tag, title, sub});
+    if(ALERTS[owner].length > 6) ALERTS[owner].length = 6;
+    if(owner === currentUser) renderAlertsFor(owner);
+  }
+
+  function completeSignIn(userId, account){
+    currentUser = userId;
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('userPill').innerHTML =
+      `<span>Signed in as</span> <b>${account.name}</b> <span>(${account.role})</span> · <button class="logout-link" id="logoutBtn">Sign out</button>`;
+    document.getElementById('logoutBtn').addEventListener('click', signOut);
+
+    if(account.isAdmin){
+      document.getElementById('addDriverPanel').style.display = 'block';
+      document.getElementById('deviceGpsPanel').style.display = 'none';
+    } else {
+      document.getElementById('addDriverPanel').style.display = 'none';
+      document.getElementById('deviceGpsPanel').style.display = 'block';
+      document.getElementById('deviceGpsRouteLabel').textContent = account.busName || account.role;
+    }
+    if(account.schoolName){
+      relocateSchool([account.schoolLat, account.schoolLng], account.schoolName);
+    }
+    startSessionTimer();
+    addAlert('info', `${account.name} signed in`, account.role);
+  }
+
+  function signOut(){
+    if(geoWatchId !== null){ navigator.geolocation.clearWatch(geoWatchId); geoWatchId = null; }
+    document.getElementById('loginGate').style.display = 'flex';
+    document.getElementById('addDriverPanel').style.display = 'none';
+    document.getElementById('deviceGpsPanel').style.display = 'none';
+    document.getElementById('sessionCountdown').style.display = 'none';
+    document.getElementById('alertFeed').innerHTML = '<div class="login-demo">Sign in to see your alerts.</div>';
+    currentUser = null;
+    clearInterval(sessionTimerHandle);
+  }
+
+  // tab switching
+  const tabSignin = document.getElementById('tabSignin');
+  const tabSignup = document.getElementById('tabSignup');
+  const loginFormEl = document.getElementById('loginForm');
+  const signupFormEl = document.getElementById('signupForm');
+  tabSignin.addEventListener('click', ()=>{
+    tabSignin.classList.add('active'); tabSignup.classList.remove('active');
+    loginFormEl.style.display = 'block'; signupFormEl.style.display = 'none';
+  });
+  tabSignup.addEventListener('click', ()=>{
+    tabSignup.classList.add('active'); tabSignin.classList.remove('active');
+    signupFormEl.style.display = 'block'; loginFormEl.style.display = 'none';
+  });
+  document.getElementById('signupRole').addEventListener('change', (e)=>{
+    const isDriver = e.target.value === 'driver';
+    document.getElementById('signupRouteField').style.display = isDriver ? 'block' : 'none';
+    document.getElementById('signupSchoolFields').style.display = isDriver ? 'none' : 'block';
+    document.getElementById('signupSchoolSearchField').style.display = isDriver ? 'none' : 'block';
+    document.getElementById('signupSchoolLocFields').style.display = isDriver ? 'none' : 'flex';
+  });
+
+  // ----- search for the school's position (OpenStreetMap Nominatim — free, no key) -----
+  async function searchSchoolLocation(){
+    const q = document.getElementById('schoolSearchInput').value.trim();
+    const resultsEl = document.getElementById('schoolSearchResults');
+    if(!q){ resultsEl.innerHTML = '<span class="mini-hint">Type a place or address to search.</span>'; return; }
+    resultsEl.innerHTML = '<span class="mini-hint">Searching…</span>';
+    try{
+      const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5`);
+      if(!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      const features = data.features || [];
+      if(!features.length){
+        resultsEl.innerHTML = '<span class="mini-hint">No matches — try a different search, or enter coordinates manually below.</span>';
+        return;
+      }
+      resultsEl.innerHTML = '';
+      features.forEach(f=>{
+        const p = f.properties || {};
+        const label = [p.name, p.city, p.state, p.country].filter(Boolean).join(', ');
+        const [lng, lat] = f.geometry.coordinates;
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        item.textContent = label || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        item.addEventListener('click', ()=>{
+          document.getElementById('signupSchoolLat').value = lat.toFixed(5);
+          document.getElementById('signupSchoolLng').value = lng.toFixed(5);
+          resultsEl.innerHTML = `<span class="mini-hint">Location set — you can fine-tune the coordinates below if needed.</span>`;
+        });
+        resultsEl.appendChild(item);
+      });
+    } catch(err){
+      resultsEl.innerHTML = '<span class="mini-hint">Search failed — check your connection and try again, or enter coordinates manually.</span>';
+    }
+  }
+  document.getElementById('schoolSearchBtn').addEventListener('click', searchSchoolLocation);
+  document.getElementById('schoolSearchInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); searchSchoolLocation(); }
+  });
+
+  signupFormEl.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const name = document.getElementById('signupName').value.trim();
+    const userId = document.getElementById('signupUser').value.trim().toLowerCase();
+    const pass = document.getElementById('signupPass').value;
+    const roleVal = document.getElementById('signupRole').value;
+    const route = document.getElementById('signupRoute').value.trim();
+    const schoolName = document.getElementById('signupSchoolName').value.trim();
+    const schoolLat = parseFloat(document.getElementById('signupSchoolLat').value);
+    const schoolLng = parseFloat(document.getElementById('signupSchoolLng').value);
+    const errEl = document.getElementById('signupError');
+
+    if(!name || !userId || !pass){ errEl.textContent = 'Fill in your name, a Staff ID, and a password.'; return; }
+    if(ACCOUNTS[userId]){ errEl.textContent = 'That Staff ID is already taken — pick another.'; return; }
+
+    let account;
+    if(roleVal === 'admin'){
+      account = {pass, name, role:'District Admin', isAdmin:true};
+      if(schoolName && !isNaN(schoolLat) && !isNaN(schoolLng)){
+        Object.assign(account, {schoolName, schoolLat, schoolLng});
+      }
+    } else {
+      account = {pass, name, role:'Bus driver' + (route ? ' — ' + route : ''), busName: route || (name + "'s bus")};
+    }
+    ACCOUNTS[userId] = account;
+    errEl.textContent = '';
+    document.getElementById('noAccountsHint').textContent = `${Object.keys(ACCOUNTS).length} account(s) created this session.`;
+    completeSignIn(userId, account);
+  });
+
+  loginFormEl.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const user = document.getElementById('loginUser').value.trim().toLowerCase();
+    const pass = document.getElementById('loginPass').value;
+    const errEl = document.getElementById('loginError');
+    const account = ACCOUNTS[user];
+    if(account && account.pass === pass){
+      errEl.textContent = '';
+      completeSignIn(user, account);
+    } else if(!account){
+      errEl.textContent = 'No account with that Staff ID yet — use "Create account" above.';
+    } else {
+      errEl.textContent = 'Incorrect password.';
+    }
+  });
+
+  // ----- session auto sign-out countdown -----
+  const SESSION_LENGTH = 5 * 60; // 5 minutes
+  let sessionRemaining = SESSION_LENGTH;
+  let sessionTimerHandle = null;
+  function startSessionTimer(){
+    sessionRemaining = SESSION_LENGTH;
+    const el = document.getElementById('sessionCountdown');
+    el.style.display = 'block';
+    clearInterval(sessionTimerHandle);
+    sessionTimerHandle = setInterval(()=>{
+      sessionRemaining--;
+      const m = Math.floor(sessionRemaining/60), s = String(sessionRemaining%60).padStart(2,'0');
+      el.textContent = `Auto sign-out in ${m}:${s}`;
+      if(sessionRemaining <= 0){
+        clearInterval(sessionTimerHandle);
+        const expiredUser = currentUser;
+        signOut();
+        addAlert('crit', 'Session expired', 'Automatically signed out after 5 minutes', expiredUser);
+      }
+    }, 1000);
+  }
+  ['mousemove','keydown','click'].forEach(evt=>{
+    document.addEventListener(evt, ()=>{ if(currentUser) sessionRemaining = SESSION_LENGTH; });
+  });
+
+  // clock
+  function tick(){
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+  tick(); setInterval(tick, 1000);
+
+  // gauge animate
+  const gaugeArc = document.getElementById('gaugeArc');
+  const gaugeNum = document.getElementById('gaugeNum');
+  const gTarget = 96.2, circumference = 251.2;
+  let gCur = 0;
+  const gaugeTimer = setInterval(()=>{
+    gCur += gTarget/40;
+    if(gCur >= gTarget){ gCur = gTarget; clearInterval(gaugeTimer); }
+    gaugeArc.style.strokeDashoffset = circumference - (circumference * gCur/100);
+    gaugeNum.textContent = gCur.toFixed(1)+'%';
+  }, 30);
+
+  // ===== REAL MAP (Leaflet + OpenStreetMap tiles — genuinely free, no key, no watermark, no Web Workers) =====
+  let campus = [...DEFAULT_CAMPUS];
+
+  const map = L.map('mapCanvas', {zoomControl:true, attributionControl:true}).setView(campus, 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    subdomains: 'abc', maxZoom: 19
+  }).addTo(map);
+
+  // No pre-seeded demo buses — the fleet starts empty. Buses appear when someone
+  // (an admin or a driver, after signing in) reports a real GPS location.
+  const busMarkers = [];
+  const fleetListEl = document.getElementById('fleetList');
+  const fleetCountEl = document.getElementById('fleetCount');
+  const busSelectEl = document.getElementById('busSelect');
+
+  const schoolIcon = L.divIcon({className:'', html:'<div class="school-divicon"></div>', iconSize:[20,20]});
+  let schoolMarker = L.marker(campus, {icon:schoolIcon}).addTo(map).bindTooltip(DEFAULT_SCHOOL_NAME, {direction:'top'});
+
+  function interpAlong(latlngs, dists, total, t){
+    const target = total * t;
+    for(let i=1;i<dists.length;i++){
+      if(target <= dists[i]){
+        const segFrac = (target - dists[i-1]) / (dists[i]-dists[i-1] || 1);
+        const a = latlngs[i-1], b = latlngs[i];
+        return L.latLng(a.lat + (b.lat-a.lat)*segFrac, a.lng + (b.lng-a.lng)*segFrac);
+      }
+    }
+    return latlngs[latlngs.length-1];
+  }
+
+  // Adds a brand-new bus, or — if a bus with this name already exists — updates its
+  // live position from a fresh GPS coordinate (the client-side stand-in for what a
+  // real GPS ping, or a dragged marker, would trigger on a real backend).
+  function setBusGps(name, sub, rawStart){
+    const rawPts = [rawStart, campus];
+    const latlngs = rawPts.map(p=>L.latLng(p[0],p[1]));
+    let dists = [0];
+    for(let i=1;i<latlngs.length;i++) dists.push(dists[i-1] + latlngs[i-1].distanceTo(latlngs[i]));
+    const total = dists[dists.length-1];
+    const stamp = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+    const existing = busMarkers.find(b => b.id === name);
+    if(existing){
+      map.removeLayer(existing.polyline);
+      const polyline = L.polyline(latlngs, {color:'#3E6690', weight:4, opacity:0.7}).addTo(map);
+      existing.marker.setLatLng(latlngs[0]);
+      Object.assign(existing, {latlngs, dists, total, t:0, polyline, sub});
+      existing.rowEl.querySelector('.fleet-sub').textContent = sub;
+      existing.rowEl.classList.add('flash-update');
+      setTimeout(()=>existing.rowEl.classList.remove('flash-update'), 900);
+      addAlert('info', `${name} GPS updated`, stamp);
+      return;
+    }
+
+    const polyline = L.polyline(latlngs, {color:'#3E6690', weight:4, opacity:0.7}).addTo(map);
+    const busIcon = L.divIcon({className:'', html:'<div class="bus-divicon"></div>', iconSize:[16,16]});
+    const marker = L.marker(latlngs[0], {icon:busIcon, draggable:true}).addTo(map).bindTooltip(name, {direction:'top', offset:[0,-8]});
+
+    marker.on('dragstart', ()=>{
+      const b = busMarkers.find(x=>x.id===name);
+      if(b) b.paused = true;
+    });
+    marker.on('dragend', ()=>{
+      const pos = marker.getLatLng();
+      setBusGps(name, (busMarkers.find(x=>x.id===name)||{}).sub || sub, [pos.lat, pos.lng]);
+      const b = busMarkers.find(x=>x.id===name);
+      if(b) b.paused = false;
+    });
+
+    const row = document.createElement('div');
+    row.className = 'fleet-row';
+    row.innerHTML = `<span class="fleet-dot"></span>
+      <div><div class="fleet-name">${name}</div><div class="fleet-sub">${sub}</div></div>
+      <div class="fleet-riders">—</div>`;
+    fleetListEl.appendChild(row);
+
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    busSelectEl.appendChild(opt);
+
+    busMarkers.push({id:name, sub, marker, latlngs, dists, total, t: Math.random()*0.6, speed: 0.00025 + Math.random()*0.00015, polyline, rowEl: row, paused:false});
+    fleetCountEl.textContent = busMarkers.length + ' routes';
+    addAlert('', `${name} added to fleet`, `GPS set — ${sub}`);
+  }
+
+  // (fleet starts empty — see comment above)
+
+  // move the whole school + re-route every bus to the new campus location
+  function relocateSchool(newCampus, newName){
+    campus = [newCampus[0], newCampus[1]];
+    schoolMarker.setLatLng(campus);
+    schoolMarker.setTooltipContent(newName);
+    map.setView(campus, map.getZoom());
+    document.querySelector('.brand-sub').textContent = newName;
+    busMarkers.slice().forEach(b=>{
+      const start = [b.latlngs[0].lat, b.latlngs[0].lng];
+      setBusGps(b.id, b.sub, start);
+    });
+    addAlert('info', 'School location updated', newName);
+  }
+
+  function animateBuses(){
+    busMarkers.forEach(b=>{
+      if(b.paused) return;
+      b.t += b.speed;
+      if(b.t > 1) b.t = 0;
+      b.marker.setLatLng(interpAlong(b.latlngs, b.dists, b.total, b.t));
+    });
+    requestAnimationFrame(animateBuses);
+  }
+  animateBuses();
+
+  setInterval(()=>{ document.getElementById('mapUpdated').textContent = 'updated just now'; }, 4000);
+
+  // ----- GPS entry control: type real coordinates, click the map to fill them in, or drag any bus on the map -----
+  let placingBus = false;
+  const pickBtn = document.getElementById('pickOnMapBtn');
+  const setBtn = document.getElementById('setLocationBtn');
+  const placeHint = document.getElementById('placeHint');
+  const latInput = document.getElementById('gpsLat');
+  const lngInput = document.getElementById('gpsLng');
+
+  pickBtn.addEventListener('click', ()=>{
+    placingBus = true;
+    pickBtn.classList.add('armed');
+    placeHint.textContent = 'Click anywhere on the map to fill in coordinates';
+    map.getContainer().style.cursor = 'crosshair';
+  });
+  map.on('click', (e)=>{
+    if(!placingBus) return;
+    placingBus = false;
+    pickBtn.classList.remove('armed');
+    map.getContainer().style.cursor = '';
+    latInput.value = e.latlng.lat.toFixed(5);
+    lngInput.value = e.latlng.lng.toFixed(5);
+    placeHint.textContent = 'Coordinates captured — press "Set GPS location" to confirm';
+  });
+
+  setBtn.addEventListener('click', ()=>{
+    const lat = parseFloat(latInput.value), lng = parseFloat(lngInput.value);
+    if(isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180){
+      placeHint.textContent = 'Enter a valid latitude (-90 to 90) and longitude (-180 to 180)';
+      return;
+    }
+    const nameInput = document.getElementById('newBusName');
+    const isNew = busSelectEl.value === '__new__';
+    const name = isNew ? (nameInput.value.trim() || ('Bus ' + (busMarkers.length + 1))) : busSelectEl.value;
+    const sub = isNew ? 'Custom route' : (busMarkers.find(b=>b.id===name)||{}).sub || 'Custom route';
+
+    setBusGps(name, sub, [lat, lng]);
+
+    if(isNew) busSelectEl.value = name;
+    nameInput.value = ''; latInput.value = ''; lngInput.value = '';
+    placeHint.textContent = `${name} location set.`;
+    setTimeout(()=>{ placeHint.textContent=''; }, 2500);
+  });
+
+  // ----- admin: add a driver directly from the dashboard -----
+  const driverListEl = document.getElementById('driverList');
+  let driversAdded = 0;
+  document.getElementById('addDriverBtn').addEventListener('click', ()=>{
+    const name = document.getElementById('drvName').value.trim();
+    const userId = document.getElementById('drvUser').value.trim().toLowerCase();
+    const pass = document.getElementById('drvPass').value;
+    const route = document.getElementById('drvRoute').value.trim();
+    const errEl = document.getElementById('drvError');
+
+    if(!name || !userId || !pass){ errEl.textContent = 'Fill in a name, Staff ID, and password.'; return; }
+    if(ACCOUNTS[userId]){ errEl.textContent = 'That Staff ID is already taken.'; return; }
+
+    ACCOUNTS[userId] = {pass, name, role: 'Bus driver' + (route ? ' — ' + route : ''), busName: route || (name + "'s bus")};
+    errEl.textContent = '';
+    driversAdded++;
+    document.getElementById('driverCount').textContent = driversAdded + ' added';
+    const row = document.createElement('div');
+    row.className = 'fleet-row';
+    row.innerHTML = `<span class="fleet-dot"></span><div><div class="fleet-name">${name}</div><div class="fleet-sub">${userId} · ${route||'unassigned route'}</div></div><div class="fleet-riders">—</div>`;
+    driverListEl.appendChild(row);
+    addAlert('', `Driver added: ${name}`, route || 'unassigned route');
+
+    document.getElementById('drvName').value = '';
+    document.getElementById('drvUser').value = '';
+    document.getElementById('drvPass').value = '';
+    document.getElementById('drvRoute').value = '';
+  });
+
+  // ----- driver: use this device's own location as the bus's live GPS -----
+  // Note: browser Geolocation requires a "secure context" (a real https:// page, or
+  // localhost) — it will not work when this file is opened directly (file://) or
+  // previewed in a sandboxed preview pane. It needs the file to actually be hosted.
+  document.getElementById('deviceGpsBtn').addEventListener('click', ()=>{
+    const btn = document.getElementById('deviceGpsBtn');
+    const statusEl = document.getElementById('deviceGpsStatus');
+    const account = ACCOUNTS[currentUser];
+
+    if(geoWatchId !== null){
+      navigator.geolocation.clearWatch(geoWatchId);
+      geoWatchId = null;
+      btn.textContent = 'Enable this device as live GPS';
+      btn.classList.remove('armed');
+      statusEl.textContent = 'Device GPS turned off.';
+      return;
+    }
+    if(!navigator.geolocation){
+      statusEl.textContent = 'This browser does not support location access.';
+      return;
+    }
+    statusEl.textContent = 'Requesting location permission…';
+    geoWatchId = navigator.geolocation.watchPosition(
+      (pos)=>{
+        const {latitude, longitude} = pos.coords;
+        setBusGps(account.busName, account.role, [latitude, longitude]);
+        const stamp = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        statusEl.textContent = `Reporting live — last update ${stamp} (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+      },
+      (err)=>{
+        statusEl.textContent = 'Location access failed: ' + err.message + ' — this needs a real hosted (https) page, not a local file or preview.';
+        btn.textContent = 'Enable this device as live GPS';
+        btn.classList.remove('armed');
+        geoWatchId = null;
+      },
+      {enableHighAccuracy:true, maximumAge:5000, timeout:10000}
+    );
+    btn.textContent = 'Disable device GPS';
+    btn.classList.add('armed');
+  });
+
+  // ticker content (badge-scan attendance feed — separate from the bus GPS alerts above)
+  const events = [
+    "M. ALVAREZ boarded Bus 4 · 7:12 AM",
+    "BUS 4 arrived campus · 7:41 AM",
+    "J. OKAFOR checked into Room 108 · 7:56 AM",
+    "ROUTE 2 complete — 52/52 accounted for",
+    "ROOM 214 attendance synced — Period 1 complete"
+  ];
+  const tickerInner = document.getElementById('tickerInner');
+  const tHtml = events.map(e => `<span><b>${e.split(' ')[0]}</b> ${e.substring(e.indexOf(' ')+1)}</span>`).join('');
+  tickerInner.innerHTML = tHtml + tHtml;
+</script>
+</body>
+</html>
